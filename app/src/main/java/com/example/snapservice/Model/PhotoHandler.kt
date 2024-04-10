@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.hardware.Camera
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -17,6 +18,7 @@ import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.Image
 import android.media.ImageReader
+import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
@@ -32,123 +34,158 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import android.util.Base64
+import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import java.io.OutputStream
 
 class PhotoHandler(private val context: Context) {
 
     fun takePicture(callback: (String?) -> Unit) {
-        val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraId = cameraManager.cameraIdList[0] // Получаем ID первой доступной камеры (обычно это основная камера)
-        try {
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.CAMERA
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                return
-            }
-            cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    try {
-                        val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                        val map =
-                            characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                        val largestSize = Collections.max(
-                            listOf(*map!!.getOutputSizes(ImageFormat.JPEG)),
-                            CompareSizesByArea()
-                        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            takePictureWithCamera2(callback)
+        } else {
+            takePictureWithCamera1(callback)
+        }
+    }
 
-                        val imageReader = ImageReader.newInstance(
-                            largestSize.width,
-                            largestSize.height,
-                            ImageFormat.JPEG,
-                            1
-                        )
+    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    private fun takePictureWithCamera2(callback: (String?) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cameraManager.cameraIdList[0]
 
-                        camera.createCaptureSession(
-                            listOf(imageReader.surface),
-                            object : CameraCaptureSession.StateCallback() {
-                                override fun onConfigured(session: CameraCaptureSession) {
-                                    val captureRequestBuilder =
-                                        camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                                    captureRequestBuilder.addTarget(imageReader.surface)
+            try {
+                if (ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.CAMERA
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    return
+                }
 
-                                    captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraCharacteristics.CONTROL_MODE_AUTO)
-                                    captureRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, CameraCharacteristics.CONTROL_AE_MODE_ON)
-                                    captureRequestBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, 50) // Увеличиваем яркость
+                cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                    override fun onOpened(camera: CameraDevice) {
+                        try {
+                            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+                            val map =
+                                characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                            val largestSize = Collections.max(
+                                listOf(*map!!.getOutputSizes(ImageFormat.JPEG)),
+                                CompareSizesByArea()
+                            )
 
-                                    val captureRequest = captureRequestBuilder.build()
-                                    session.capture(
-                                        captureRequest,
-                                        object : CameraCaptureSession.CaptureCallback() {
-                                            override fun onCaptureCompleted(
-                                                session: CameraCaptureSession,
-                                                request: CaptureRequest,
-                                                result: TotalCaptureResult
-                                            ) {
-                                                val buffer =
-                                                    imageReader.acquireLatestImage().planes[0].buffer
-                                                val bytes = ByteArray(buffer.capacity())
-                                                buffer.get(bytes)
-                                                //saveImageToGallery(bytes)
-                                                callback(Base64.encodeToString(bytes, Base64.DEFAULT))
-                                                imageReader.close()
-                                                camera.close()
-                                            }
-                                        },
-                                        null
-                                    )
-                                }
+                            val imageReader = ImageReader.newInstance(
+                                largestSize.width,
+                                largestSize.height,
+                                ImageFormat.JPEG,
+                                1
+                            )
 
-                                override fun onConfigureFailed(session: CameraCaptureSession) {
-                                    callback(null)
-                                }
-                            },
-                            null
-                        )
-                    } catch (e: CameraAccessException) {
-                        e.printStackTrace()
+                            camera.createCaptureSession(
+                                listOf(imageReader.surface),
+                                object : CameraCaptureSession.StateCallback() {
+                                    override fun onConfigured(session: CameraCaptureSession) {
+                                        val captureRequestBuilder =
+                                            camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                                        captureRequestBuilder.addTarget(imageReader.surface)
+
+                                        captureRequestBuilder.set(
+                                            CaptureRequest.CONTROL_MODE,
+                                            CameraCharacteristics.CONTROL_MODE_AUTO
+                                        )
+                                        captureRequestBuilder.set(
+                                            CaptureRequest.CONTROL_AE_MODE,
+                                            CameraCharacteristics.CONTROL_AE_MODE_ON
+                                        )
+
+                                        val captureRequest = captureRequestBuilder.build()
+                                        session.capture(
+                                            captureRequest,
+                                            object : CameraCaptureSession.CaptureCallback() {
+                                                override fun onCaptureCompleted(
+                                                    session: CameraCaptureSession,
+                                                    request: CaptureRequest,
+                                                    result: TotalCaptureResult
+                                                ) {
+                                                    val buffer = imageReader.acquireLatestImage().planes[0].buffer
+                                                    val bytes = ByteArray(buffer.capacity())
+                                                    buffer.get(bytes)
+                                                    callback(Base64.encodeToString(bytes, Base64.DEFAULT))
+                                                    imageReader.close()
+                                                    camera.close()
+                                                }
+                                            },
+                                            null
+                                        )
+                                    }
+
+                                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                                        callback(null)
+                                    }
+                                },
+                                null
+                            )
+                        } catch (e: CameraAccessException) {
+                            e.printStackTrace()
+                            callback(null)
+                        }
+                    }
+
+                    override fun onDisconnected(camera: CameraDevice) {
                         callback(null)
                     }
-                }
 
-                override fun onDisconnected(camera: CameraDevice) {
-                    callback(null)
-                }
-
-                override fun onError(camera: CameraDevice, error: Int) {
-                    callback(null)
-                }
-            }, null)
-        } catch (e: CameraAccessException) {
-            e.printStackTrace()
+                    override fun onError(camera: CameraDevice, error: Int) {
+                        callback(null)
+                    }
+                }, null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                callback(null)
+            }
+        } else {
+            // Обработка ошибки для версий API ниже 21 (например, Camera1 API)
             callback(null)
         }
     }
 
-    private fun saveImageToGallery(imageBytes: ByteArray) {
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "my_image.jpg")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+    private fun takePictureWithCamera1(callback: (String?) -> Unit) {
+        val camera = Camera.open() ?: run {
+            callback(null)
+            return
         }
 
-        val resolver = context.contentResolver
-        val uri =
-            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-
-        uri?.let { imageUri ->
-            try {
-                resolver.openOutputStream(imageUri)?.use { outputStream ->
-                    outputStream.write(imageBytes)
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
+        try {
+            val parameters = camera.parameters
+            val supportedSizes = parameters.supportedPictureSizes
+            val largestSize = Collections.max(supportedSizes) { size1, size2 ->
+                size1.width * size1.height - size2.width * size2.height
             }
+
+            parameters.setPictureSize(largestSize.width, largestSize.height)
+            parameters.focusMode = Camera.Parameters.FOCUS_MODE_AUTO // Можно настроить режим фокусировки, если нужно
+
+            camera.parameters = parameters
+            camera.startPreview()
+
+            camera.takePicture(null, null, Camera.PictureCallback { data, _ ->
+                if (data != null) {
+                    val base64Image = Base64.encodeToString(data, Base64.DEFAULT)
+                    callback(base64Image)
+                } else {
+                    callback(null)
+                }
+                camera.release()
+            })
+        } catch (e: Exception) {
+            e.printStackTrace()
+            callback(null)
+            camera.release()
         }
     }
 
     private class CompareSizesByArea : Comparator<Size> {
+        @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
         override fun compare(lhs: Size, rhs: Size): Int {
             return java.lang.Long.signum(
                 lhs.width.toLong() * lhs.height - rhs.width.toLong() * rhs.height

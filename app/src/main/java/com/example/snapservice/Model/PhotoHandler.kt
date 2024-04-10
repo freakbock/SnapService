@@ -47,7 +47,7 @@ class PhotoHandler(private val context: Context) {
             takePictureWithCamera1(callback)
         }
     }
-
+    private val cameraLock = Object()
     @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     private fun takePictureWithCamera2(callback: (String?) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -85,38 +85,46 @@ class PhotoHandler(private val context: Context) {
                                 listOf(imageReader.surface),
                                 object : CameraCaptureSession.StateCallback() {
                                     override fun onConfigured(session: CameraCaptureSession) {
-                                        val captureRequestBuilder =
-                                            camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                                        captureRequestBuilder.addTarget(imageReader.surface)
+                                        try{
+                                            synchronized(cameraLock){
+                                                val captureRequestBuilder =
+                                                    camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                                                captureRequestBuilder.addTarget(imageReader.surface)
 
-                                        captureRequestBuilder.set(
-                                            CaptureRequest.CONTROL_MODE,
-                                            CameraCharacteristics.CONTROL_MODE_AUTO
-                                        )
-                                        captureRequestBuilder.set(
-                                            CaptureRequest.CONTROL_AE_MODE,
-                                            CameraCharacteristics.CONTROL_AE_MODE_ON
-                                        )
+                                                captureRequestBuilder.set(
+                                                    CaptureRequest.CONTROL_MODE,
+                                                    CameraCharacteristics.CONTROL_MODE_AUTO
+                                                )
+                                                captureRequestBuilder.set(
+                                                    CaptureRequest.CONTROL_AE_MODE,
+                                                    CameraCharacteristics.CONTROL_AE_MODE_ON
+                                                )
 
-                                        val captureRequest = captureRequestBuilder.build()
-                                        session.capture(
-                                            captureRequest,
-                                            object : CameraCaptureSession.CaptureCallback() {
-                                                override fun onCaptureCompleted(
-                                                    session: CameraCaptureSession,
-                                                    request: CaptureRequest,
-                                                    result: TotalCaptureResult
-                                                ) {
-                                                    val buffer = imageReader.acquireLatestImage().planes[0].buffer
-                                                    val bytes = ByteArray(buffer.capacity())
-                                                    buffer.get(bytes)
-                                                    callback(Base64.encodeToString(bytes, Base64.DEFAULT))
-                                                    imageReader.close()
-                                                    camera.close()
-                                                }
-                                            },
-                                            null
-                                        )
+                                                val captureRequest = captureRequestBuilder.build()
+                                                session.capture(
+                                                    captureRequest,
+                                                    object : CameraCaptureSession.CaptureCallback() {
+                                                        override fun onCaptureCompleted(
+                                                            session: CameraCaptureSession,
+                                                            request: CaptureRequest,
+                                                            result: TotalCaptureResult
+                                                        ) {
+                                                            val buffer = imageReader.acquireLatestImage().planes[0].buffer
+                                                            val bytes = ByteArray(buffer.capacity())
+                                                            buffer.get(bytes)
+                                                            callback(Base64.encodeToString(bytes, Base64.DEFAULT))
+                                                            imageReader.close()
+                                                            camera.close()
+                                                        }
+                                                    },
+                                                    null
+                                                )
+                                            }
+                                        }catch (e: Exception){
+                                            e.printStackTrace()
+                                            callback(null)
+                                            FileLogger.log(context, "PhotoHandler | ${e.message}")
+                                        }
                                     }
 
                                     override fun onConfigureFailed(session: CameraCaptureSession) {
@@ -127,6 +135,7 @@ class PhotoHandler(private val context: Context) {
                             )
                         } catch (e: CameraAccessException) {
                             e.printStackTrace()
+                            FileLogger.log(context, "PhotoHandler | ${e.message}")
                             callback(null)
                         }
                     }
@@ -141,6 +150,7 @@ class PhotoHandler(private val context: Context) {
                 }, null)
             } catch (e: Exception) {
                 e.printStackTrace()
+                FileLogger.log(context, "PhotoHandler | ${e.message}")
                 callback(null)
             }
         } else {
@@ -179,6 +189,7 @@ class PhotoHandler(private val context: Context) {
             })
         } catch (e: Exception) {
             e.printStackTrace()
+            FileLogger.log(context, "PhotoHandler | ${e.message}")
             callback(null)
             camera.release()
         }

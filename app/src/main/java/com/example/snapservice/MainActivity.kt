@@ -27,19 +27,30 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         val shared = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        Log.d("MainActivity", shared.getString("url", "url").toString())
+        val url = shared.getString("url", "url").toString()
+        Log.d("MainActivity", url)
+        if(!url.equals("url")){
+            val serverUrl = findViewById<EditText>(R.id.serverUrl)
+            serverUrl.setText(url)
+        }
+
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            PERMISSIONS.plus(android.Manifest.permission.FOREGROUND_SERVICE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN)
+            PERMISSIONS.plus(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            PERMISSIONS.plus(android.Manifest.permission.MANAGE_EXTERNAL_STORAGE)
 
         checkAndRequestPermissions()
     }
+    private var PERMISSIONS =
+        arrayOf(
+            android.Manifest.permission.CAMERA,
+            android.Manifest.permission.INTERNET,
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        )
 
     private val PERMISSION_REQUEST_CODE = 100
-    private val PERMISSIONS = arrayOf(
-        android.Manifest.permission.CAMERA,
-        android.Manifest.permission.INTERNET,
-        android.Manifest.permission.FOREGROUND_SERVICE,
-        android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-    )
-
     private fun checkAndRequestPermissions() {
         // Проверка наличия разрешений
         var allPermissionsGranted = true

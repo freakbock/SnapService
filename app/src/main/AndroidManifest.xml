@@ -6,15 +6,19 @@
         android:name="android.hardware.camera"
         android:required="true" />
 
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"
         tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:usesCleartextTraffic="true"
@@ -37,8 +41,11 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".Model.HTTPListenerService" android:exported="true"
-            android:foregroundServiceType="dataSync"/>
+        <activity android:name=".View.CameraActivity" android:exported="true"
+            />
+        <service android:name=".Model.HTTPListenerService" android:exported="false"
+            android:foregroundServiceType="dataSync"
+            />
 
     </application>
 

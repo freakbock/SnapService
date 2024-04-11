@@ -8,20 +8,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.Handler
-import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.snapservice.R
-import com.example.snapservice.View.CameraActivity
 import fi.iki.elonen.NanoHTTPD
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.net.HttpURLConnection
@@ -96,30 +92,35 @@ class HTTPListenerService : Service() {
 
     private fun formJsonPostQuert(base64image: String){
         Thread{
-            val jsonResponse = JSONObject()
-            jsonResponse.put("key", KEY)
-            jsonResponse.put("base64", base64image)
+            try{
 
-            Log.d("HTTPListenerService", jsonResponse.toString())
-            FileLogger.log(
-                context!!,
-                "HTTPListenerService | ${jsonResponse.toString()}"
-            )
-            val sharedPreferences = context.getSharedPreferences(
-                "settings",
-                Context.MODE_PRIVATE
-            )
-            val url = sharedPreferences.getString("url", "")
-            Log.d("HTTPListenerService", url!!)
-            FileLogger.log(context, "HTTPListenerService | ${url!!}")
-            if (url != null) {
-                sendPostRequest(url, jsonResponse.toString())
-                Log.d("HTTPListenerService", "Запрос отправлен")
-                FileLogger.log(
-                    context,
-                    "HTTPListenerService | Запрос отправлен"
+                val jsonResponse = JSONObject()
+                jsonResponse.put("key", KEY)
+                jsonResponse.put("base64", base64image)
+
+                Log.d("HTTPListenerService", jsonResponse.toString())
+                val sharedPreferences = context.getSharedPreferences(
+                    "settings",
+                    Context.MODE_PRIVATE
                 )
+                var url = sharedPreferences.getString("url", "")
+                Log.d("HTTPListenerService", url!!)
+                FileLogger.log(context, "HTTPListenerService | ${url}")
+                if (url != null) {
+                    url += "?token="+TOKEN
+                    sendPostRequest(url, jsonResponse.toString())
+                    Log.d("HTTPListenerService", "Запрос отправлен")
+                    FileLogger.log(
+                        context,
+                        "HTTPListenerService | Запрос отправлен"
+                    )
+                }
             }
+            catch (e: Exception){
+                FileLogger.log(context, e.message!!)
+                Log.d("HTTPListenerService", "${e.message}")
+            }
+
         }.start()
     }
 
@@ -128,7 +129,13 @@ class HTTPListenerService : Service() {
     private fun startServer() {
         Log.d("HTTPListenerService", "Starting service...")
         FileLogger.log(context, "HTTPListenerService | Starting service...")
-        server = object : NanoHTTPD(8080) {
+
+        val prefs= context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        if(prefs.contains("port")){
+            PORT = prefs.getInt("port", 8080)
+        }
+
+        server = object : NanoHTTPD(PORT) {
             override fun serve(session: IHTTPSession): Response {
                 try{
                     Log.d("HTTPListenerService", "Есть коннект")
@@ -136,67 +143,36 @@ class HTTPListenerService : Service() {
                     val uri = session.uri
                     if ("/snap" == uri && session.method == NanoHTTPD.Method.GET) {
                         val key = session.parms["key"]?.toString()
-                        if (key != null) {
+                        val token = session.parms["token"]?.toString()
+                        val quality = session.parms["quality"]?.toString()
+                        val camera = session.parms["camera"]?.toString()
+                        if (key != null && token!=null && quality!=null && camera!= null) {
                             Log.d("HTTPListenerService", "Received key: $key")
                             FileLogger.log(context, "HTTPListenerService | Received key: $key")
                                 synchronized(cameraLock) {
                                     KEY = key
-                                    Handler(Looper.getMainLooper()).post {
-
-                                        val intent = Intent(context, CameraActivity::class.java)
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(intent)
-
-//                                        photoHandler.takePicture { base64image ->
-//                                            if(base64image != null){
-//                                                val jsonResponse = JSONObject()
-//                                                jsonResponse.put("key", key)
-//                                                jsonResponse.put("base64", base64image)
-//
-//                                                Log.d("HTTPListenerService", jsonResponse.toString())
-//                                                FileLogger.log(
-//                                                    context,
-//                                                    "HTTPListenerService | ${jsonResponse.toString()}"
-//                                                )
-//                                                val sharedPreferences = context.getSharedPreferences(
-//                                                    "settings",
-//                                                    Context.MODE_PRIVATE
-//                                                )
-//                                                val url = sharedPreferences.getString("url", "")
-//                                                Log.d("HTTPListenerService", url!!)
-//                                                FileLogger.log(context, "HTTPListenerService | ${url!!}")
-//                                                if (url != null) {
-//                                                    Thread{
-//                                                        val isSuccess = sendPostRequest(url, jsonResponse.toString())
-//                                                        if(isSuccess){
-//                                                            isSuccessful = 1
-//                                                        }
-//                                                        else{
-//                                                            isSuccessful = 3
-//                                                        }
-//                                                        isImageReceived = true
-//                                                        Log.d("HTTPListenerService", "Запрос отправлен")
-//                                                        FileLogger.log(
-//                                                            context,
-//                                                            "HTTPListenerService | Запрос отправлен"
-//                                                        )
-//                                                    }.start()
-//                                                }
-//                                                else{
-//                                                    isSuccessful = 3
-//                                                    isImageReceived = true
-//                                                }
-//                                            }
-//                                            else{
-//                                                isSuccessful = 2
-//                                                isImageReceived = true
-//                                            }
-//                                        }
-                                    }
+                                    TOKEN = token
+                                    QUALITY = quality
+                                        if(camera == "1"){
+                                            val intent = Intent(context, CameraActivity::class.java)
+                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            intent.putExtra("quality", quality)
+                                            context.startActivity(intent)
+                                            return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "Success")
+                                        }
+                                        else if(camera == "2")
+                                        {
+                                            photoHandler.takePicture { base64image ->
+                                                if(base64image != null){
+                                                    formJsonPostQuert(base64image)
+                                                }
+                                            }
+                                            return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "Success")
+                                        }
+                                        else{
+                                            return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "Missing camera parameter")
+                                        }
                                 }
-
-                            return newFixedLengthResponse(Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "Success")
-
                         }
                         else {
                             return newFixedLengthResponse(Response.Status.BAD_REQUEST, NanoHTTPD.MIME_PLAINTEXT, "Missing key parameter")
@@ -247,7 +223,10 @@ class HTTPListenerService : Service() {
     }
 
     companion object {
+        private var PORT = 8080
         private var KEY = "0"
+        private var TOKEN = "0"
+        private var QUALITY = "0"
         private const val NOTIFICATION_ID = 123
     }
 }

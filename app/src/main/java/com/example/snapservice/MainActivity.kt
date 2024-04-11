@@ -32,6 +32,8 @@ class MainActivity : AppCompatActivity() {
         if(!url.equals("url")){
             val serverUrl = findViewById<EditText>(R.id.serverUrl)
             serverUrl.setText(url)
+            val port = findViewById<EditText>(R.id.port)
+            port.setText(shared.getInt("port", 8080).toString())
         }
 
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
@@ -119,9 +121,19 @@ class MainActivity : AppCompatActivity() {
     fun SelectServerUrl(view: View){
         val urlEditText= findViewById<EditText>(R.id.serverUrl)
         val url = urlEditText.text.toString()
-        if(url != null){
+
+        val portEditText = findViewById<EditText>(R.id.port)
+        val port = portEditText.text.toString()
+        if(!url.equals("")){
             val sharedPreferences = getSharedPreferences("settings", Context.MODE_PRIVATE)
             val editor = sharedPreferences.edit()
+            if(!port.equals(""))
+            {
+                val portInt = port.toIntOrNull()
+                if(portInt != null){
+                    editor.putInt("port", portInt)
+                }
+            }
             editor.putString("url", url)
             editor.apply()
             Toast.makeText(this, "Адрес веб сервера успешно обновлен", Toast.LENGTH_SHORT).show()
